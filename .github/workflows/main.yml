@@ -1,0 +1,44 @@
+name: RDP Manual Auth
+on:
+  workflow_dispatch:
+jobs:
+  rdp:
+    runs-on: windows-latest
+    steps:
+      - name: Rodar VM e Gerar Link
+        run: |
+          # 1. Configura RDP e Usuário
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          $password = "Manus@2026RDP!"
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name "RDPUser" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "RDPUser"
+
+          # 2. Instala Tailscale
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          Invoke-WebRequest -Uri $tsUrl -OutFile "ts.msi"
+          Start-Process msiexec.exe -ArgumentList "/i", "ts.msi", "/quiet", "/norestart" -Wait
+
+          # 3. GERA O LINK E MOSTRA IMEDIATAMENTE
+          Write-Host "==============================================="
+          Write-Host "BUSCANDO LINK DE LOGIN DO TAILSCALE..."
+          Write-Host "==============================================="
+          
+          # Inicia o processo em segundo plano e captura o link
+          $process = Start-Process "$env:ProgramFiles\Tailscale\tailscale.exe" -ArgumentList "up", "--qr" -NoNewWindow -PassThru -RedirectStandardError "auth_link.txt"
+          Start-Sleep -Seconds 10
+          
+          # Mostra o conteúdo do arquivo onde o link é gerado
+          Get-Content "auth_link.txt" | Select-String "https://login.tailscale.com"
+          
+          Write-Host "==============================================="
+          Write-Host "SE O LINK NÃO APARECEU ACIMA, AGUARDE 10 SEGUNDOS..."
+          
+          while ($true) {
+              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              if ($tsIP) { 
+                  Write-Host "=== CONECTADO COM SUCESSO! ==="
+                  Write-Host "IP: $tsIP | User: RDPUser | Pass: $password"
+              }
+              Start-Sleep -Seconds 20
+          }
